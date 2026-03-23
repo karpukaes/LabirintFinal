@@ -3,6 +3,53 @@
 #include <fstream>
 #include <string>
 
+namespace {
+
+    // Проверяет, есть ли у имени файла расширение. Нам важно только наличие
+    // какой-либо точки после последнего разделителя каталога. Если расширения нет,
+    // пользователь, скорее всего, ввёл просто имя сценария без .txt.
+    bool hasFileExtension(const std::string& path) {
+        const std::size_t slashPos = path.find_last_of("/\\");
+            const std::size_t dotPos = path.find_last_of('.');
+        return dotPos != std::string::npos && (slashPos == std::string::npos || dotPos > slashPos);
+    }
+
+    // Пытается открыть сценарий сначала по указанному пути, а если это не удалось
+    // и расширение не задано, то автоматически пробует вариант с .txt.
+    bool openScenarioFile(const std::string& userInput, std::ifstream& fin, std::string* actualPath = nullptr) {
+        fin.open(userInput);
+        if (fin) {
+            if (actualPath) {
+                *actualPath = userInput;
+            }
+            return true;
+        }
+
+        if (hasFileExtension(userInput)) {
+            return false;
+        }
+
+        fin.clear();
+        fin.open(userInput + ".txt");
+        if (fin) {
+            if (actualPath) {
+                *actualPath = userInput + ".txt";
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+} // namespace
+
+std::string resolveScenarioFilename(const std::string& userInput) {
+    if (userInput.empty() || hasFileExtension(userInput)) {
+        return userInput;
+    }
+    return userInput + ".txt";
+}
+
 bool loadScenario(
     const char* filename,
     int& N,
@@ -12,8 +59,8 @@ bool loadScenario(
     Pos exits[MAX_EXITS],
     int& exitCount
 ) {
-    std::ifstream fin(filename);
-    if (!fin) {
+    std::ifstream fin;
+    if (!openScenarioFile(filename, fin)) {
         return false;
     }
 

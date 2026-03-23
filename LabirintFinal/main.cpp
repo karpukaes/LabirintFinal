@@ -145,7 +145,7 @@ int main() {
             continue;
         }
 
-        std::cout << "Введите путь к файлу сценария: ";
+        std::cout << "Введите путь к файлу сценария (расширение .txt можно не указывать): ";
         std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
         std::getline(std::cin, scenarioPath);
 

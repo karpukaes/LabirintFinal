@@ -8,6 +8,7 @@
 // ============================================================================
 
 #include "types.h"
+#include <string>
 
 bool loadScenario(
     const char* filename,
@@ -18,3 +19,8 @@ bool loadScenario(
     Pos exits[MAX_EXITS],
     int& exitCount
 );
+
+// Возвращает удобный для пользователя путь: если расширение .txt не указано,
+// функция автоматически добавит его. При необходимости может вернуть и
+// исходную строку без изменений.
+std::string resolveScenarioFilename(const std::string& userInput);
