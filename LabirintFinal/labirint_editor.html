@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Редактор лабиринтов — объединённая версия Stage 4 + Stage 6</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    button, select, input { padding: 6px 10px; }
+    #gridWrap { overflow:auto; max-width:100%; border:1px solid #bbb; padding:10px; }
+    #grid { display:grid; gap:1px; background:#999; width:max-content; margin-top:10px; }
+    .cell { width:22px; height:22px; background:#fff; border:none; cursor:pointer; }
+    .wall { background:#333; }
+    .sand { background:#e7c45a; }
+    .water { background:#4a78c9; }
+    .start { background:#54b86a; }
+    .exit { background:#d94b4b; }
+    .path { outline:2px solid #00bcd4; }
+    textarea { width:100%; height:220px; margin-top:10px; }
+    .meta { margin:10px 0; padding:8px 10px; background:#f5f5f5; border-left:4px solid #5b8def; }
+    .coords { font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Web-редактор лабиринтов — объединённая версия Stage 4 + Stage 6</h1>
+
+  <div class="meta">
+    Координаты в редакторе и в программе полностью совпадают:<br>
+    <span class="coords">(0, 0)</span> — верхний левый угол, <span class="coords">x</span> растёт вправо, <span class="coords">y</span> растёт вниз.
+  </div>
+
+  <div class="toolbar">
+    <label>Строки <input id="rows" type="number" value="15" min="5" max="64"></label>
+    <label>Столбцы <input id="cols" type="number" value="20" min="5" max="64"></label>
+    <button onclick="createGrid()">Создать поле</button>
+    <select id="tool">
+      <option value="wall">Стена</option>
+      <option value="free">Пусто</option>
+      <option value="sand">Песок</option>
+      <option value="water">Вода</option>
+      <option value="start">Старт</option>
+      <option value="exit">Выход</option>
+    </select>
+    <label><input id="diag" type="checkbox" checked> Разрешить диагонали для проверки пути</label>
+    <label><input id="corner" type="checkbox" checked> Запретить срезание углов</label>
+    <button onclick="generateRandom()">Случайная генерация</button>
+    <button onclick="generatePerfect()">Идеальный лабиринт</button>
+    <button onclick="checkMap()">Проверить карту</button>
+    <button onclick="showBfsPath()">Показать BFS-путь</button>
+    <button onclick="exportScenario()">Экспорт</button>
+    <button onclick="downloadScenario()">Скачать .txt</button>
+    <button onclick="importScenario()">Импорт</button>
+  </div>
+
+  <div id="info"></div>
+  <div id="gridWrap"><div id="grid"></div></div>
+  <textarea id="io"></textarea>
+
+<script>
+let N = 15, M = 20;
+let field = [];
+let start = {x:1, y:1};
+let exits = [{x:18, y:13}];
+let path = [];
+let hoverCell = null;
+
+function resetField() {
+  field = Array.from({length:N}, ()=>Array(M).fill(0));
+  path = [];
+}
+
+function createGrid() {
+  N = parseInt(document.getElementById('rows').value, 10);
+  M = parseInt(document.getElementById('cols').value, 10);
+  resetField();
+  start = {x:1, y:1};
+  exits = [{x:Math.max(0, M-2), y:Math.max(0, N-2)}];
+  render();
+}
+
+function cellClass(v) {
+  if (v === 1) return 'wall';
+  if (v === 2) return 'sand';
+  if (v === 3) return 'water';
+  return '';
+}
+
+function isExit(x,y){
+  return exits.some(e=>e.x===x&&e.y===y);
+}
+
+function cellName(v) {
+  if (v === 1) return 'стена';
+  if (v === 2) return 'песок';
+  if (v === 3) return 'вода';
+  return 'свободно';
+}
+
+function render() {
+  const grid = document.getElementById('grid');
+  grid.style.gridTemplateColumns = `repeat(${M}, 22px)`;
+  grid.innerHTML = '';
+
+  for (let y=0; y<N; y++) {
+    for (let x=0; x<M; x++) {
+      const b = document.createElement('button');
+      b.className = 'cell ' + cellClass(field[y][x]);
+      if (start.x===x && start.y===y) b.classList.add('start');
+      if (isExit(x,y)) b.classList.add('exit');
+      if (path.some(p=>p.x===x && p.y===y)) b.classList.add('path');
+      b.title = `(${x}, ${y})`;
+      b.onmouseenter = ()=>{ hoverCell = {x, y}; updateInfo(); };
+      b.onclick = ()=>applyTool(x,y);
+      grid.appendChild(b);
+    }
+  }
+  updateInfo();
+}
+
+function updateInfo() {
+  const info = document.getElementById('info');
+  const hoverText = hoverCell ? ` | курсор: (${hoverCell.x}, ${hoverCell.y}), тип: ${cellName(field[hoverCell.y][hoverCell.x])}` : '';
+  info.textContent = `Размер: ${M}x${N} | старт: (${start.x}, ${start.y}) | выходов: ${exits.length}${hoverText}`;
+}
+
+function applyTool(x,y){
+  path = [];
+  const tool = document.getElementById('tool').value;
+
+  if (tool==='start') {
+    if (field[y][x] !== 1) start = {x,y};
+  } else if (tool==='exit') {
+    if (field[y][x]===1 || (start.x===x&&start.y===y)) return;
+    const idx = exits.findIndex(e=>e.x===x && e.y===y);
+    if (idx>=0) exits.splice(idx,1);
+    else exits.push({x,y});
+  } else {
+    if (start.x===x&&start.y===y) return;
+    exits = exits.filter(e=>!(e.x===x&&e.y===y));
+    if (tool==='wall') field[y][x]=1;
+    if (tool==='free') field[y][x]=0;
+    if (tool==='sand') field[y][x]=2;
+    if (tool==='water') field[y][x]=3;
+  }
+  render();
+}
+
+function canStep(from, to) {
+  if (to.x < 0 || to.x >= M || to.y < 0 || to.y >= N) return false;
+  if (field[to.y][to.x] === 1) return false;
+
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const diagonal = Math.abs(dx) === 1 && Math.abs(dy) === 1;
+  const allowDiagonal = document.getElementById('diag').checked;
+  const forbidCornerCutting = document.getElementById('corner').checked;
+
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (dx === 0 && dy === 0)) return false;
+  if (diagonal && !allowDiagonal) return false;
+
+  if (diagonal && forbidCornerCutting) {
+    const s1 = {x: from.x + dx, y: from.y};
+    const s2 = {x: from.x, y: from.y + dy};
+    if (field[s1.y][s1.x] === 1 || field[s2.y][s2.x] === 1) return false;
+  }
+
+  return true;
+}
+
+function neighbors(p) {
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  return dirs
+    .map(([dx,dy])=>({x:p.x+dx, y:p.y+dy}))
+    .filter(n=>canStep(p, n));
+}
+
+function bfs() {
+  const q = [start];
+  const used = Array.from({length:N}, ()=>Array(M).fill(false));
+  const parent = Array.from({length:N}, ()=>Array(M).fill(null));
+  used[start.y][start.x] = true;
+
+  while (q.length) {
+    const cur = q.shift();
+    const eIdx = exits.findIndex(e=>e.x===cur.x&&e.y===cur.y);
+    if (eIdx>=0) {
+      const out = [];
+      let t = cur;
+      while (t) {
+        out.push(t);
+        t = parent[t.y][t.x];
+      }
+      out.reverse();
+      return {found:true, path:out, exitIndex:eIdx};
+    }
+
+    for (const n of neighbors(cur)) {
+      if (!used[n.y][n.x]) {
+        used[n.y][n.x] = true;
+        parent[n.y][n.x] = cur;
+        q.push(n);
+      }
+    }
+  }
+
+  return {found:false, path:[], exitIndex:-1};
+}
+
+function checkMap() {
+  const res = bfs();
+  alert(res.found ? `Карта корректна. Найден путь к выходу #${res.exitIndex+1}` : 'Путь к выходам не найден');
+}
+
+function showBfsPath(){
+  const res = bfs();
+  path = res.path;
+  render();
+  alert(res.found ? 'Путь подсвечен.' : 'Путь не найден.');
+}
+
+function generateRandom(){
+  resetField();
+  for (let y=0;y<N;y++) for (let x=0;x<M;x++) {
+    if ((x===start.x&&y===start.y) || isExit(x,y)) continue;
+    const r = Math.random();
+    if (r < 0.20) field[y][x]=1;
+    else if (r < 0.28) field[y][x]=2;
+    else if (r < 0.33) field[y][x]=3;
+  }
+  render();
+}
+
+function generatePerfect(){
+  if (N % 2 === 0) N--;
+  if (M % 2 === 0) M--;
+  document.getElementById('rows').value = N;
+  document.getElementById('cols').value = M;
+
+  field = Array.from({length:N}, ()=>Array(M).fill(1));
+  const stack = [{x:1,y:1}];
+  field[1][1]=0;
+
+  while (stack.length) {
+    const cur = stack[stack.length-1];
+    const dirs = [[2,0],[-2,0],[0,2],[0,-2]].filter(([dx,dy])=>{
+      const nx = cur.x+dx, ny = cur.y+dy;
+      return nx>0&&nx<M-1&&ny>0&&ny<N-1&&field[ny][nx]===1;
+    });
+    if (!dirs.length) {
+      stack.pop();
+      continue;
+    }
+    const [dx,dy] = dirs[Math.floor(Math.random()*dirs.length)];
+    field[cur.y+dy/2][cur.x+dx/2] = 0;
+    field[cur.y+dy][cur.x+dx] = 0;
+    stack.push({x:cur.x+dx,y:cur.y+dy});
+  }
+
+  start = {x:1,y:1};
+  exits = [{x:M-2,y:N-2}];
+  path = [];
+  render();
+}
+
+function exportScenario(){
+  let s = `${N} ${M}\n`;
+  s += `${start.x} ${start.y}\n`;
+  s += `${exits.length}\n`;
+  for (const e of exits) s += `${e.x} ${e.y}\n`;
+  s += 'GRID\n';
+
+  // Критично важно: строка y экспортируется как field[y], а координата клетки
+  // в файле записывается как (x, y). Никаких смещений, +1/-1 и перестановок нет.
+  for (let y=0; y<N; y++) {
+    s += field[y].join('') + '\n';
+  }
+
+  document.getElementById('io').value = s;
+}
+
+function downloadScenario(){
+  exportScenario();
+  const blob = new Blob([document.getElementById('io').value], {type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'maze_stage4_stage6_merged.txt';
+  a.click();
+}
+
+function importScenario(){
+  const txt = document.getElementById('io').value.trim().split(/\r?\n/);
+  let i = 0;
+
+  [N,M] = txt[i++].split(/\s+/).map(Number);
+  [start.x,start.y] = txt[i++].split(/\s+/).map(Number);
+
+  const ec = Number(txt[i++]);
+  exits = [];
+  for (let k=0; k<ec; k++) {
+    const [x,y] = txt[i++].split(/\s+/).map(Number);
+    exits.push({x,y});
+  }
+
+  i++; // пропускаем строку GRID
+
+  field = Array.from({length:N}, ()=>Array(M).fill(0));
+  for (let y=0; y<N; y++) {
+    field[y] = txt[i++].trim().split('').map(Number);
+  }
+
+  path = [];
+  document.getElementById('rows').value = N;
+  document.getElementById('cols').value = M;
+  render();
+}
+
+createGrid();
+</script>
+</body>
+</html>
