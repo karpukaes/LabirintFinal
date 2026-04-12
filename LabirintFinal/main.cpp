@@ -9,6 +9,7 @@
 #include "dijkstra.h"
 #include "astar.h"
 #include "stats.h"
+#include "uart_game.h"
 
 static AnimationSettings askAnimationSettings() {
     AnimationSettings a;
@@ -171,6 +172,7 @@ int main() {
             std::cout << "5 - Сравнение BFS / Дейкстра / A*\n";
             std::cout << "6 - Настройки перемещения\n";
             std::cout << "7 - Выбор эвристики A*\n";
+            std::cout << "8 - UART-ветка: ручное управление пакетами\n";
             std::cout << "0 - Назад\n";
             std::cout << "Ваш выбор: ";
 
@@ -209,6 +211,11 @@ int main() {
 
             if (mode == 1) {
                 runManualMode(N, M, field, start, exits, exitCount, moveSettings);
+                continue;
+            }
+
+            if (mode == 8) {
+                runUartTrainingSession(N, M, field, start, exits, exitCount, moveSettings, scenarioPath.c_str());
                 continue;
             }
 

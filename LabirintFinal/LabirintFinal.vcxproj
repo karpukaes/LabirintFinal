@@ -150,6 +150,7 @@
     <ClCompile Include="manual.cpp" />
     <ClCompile Include="path_utils.cpp" />
     <ClCompile Include="stats.cpp" />
+    <ClCompile Include="uart_game.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
