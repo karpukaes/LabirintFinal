@@ -460,6 +460,11 @@ namespace {
             result.type = UartCommandType::Help;
             return result;
         }
+        if (type == "CMD_EXIT") {
+            result.ok = true;
+            result.type = UartCommandType::Exit;
+            return result;
+        }
         if (type != "CMD_MOVE") {
             result.parseError = ParseErrorType::UnsupportedType;
             result.errorText = "UNKNOWN_PACKET_TYPE";
